@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>学校野菜 POSレジ</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f3f5f7;color:#17202a}
+header{background:#1677ff;color:white;padding:14px 20px;display:flex;justify-content:space-between;align-items:center}
+header h1{font-size:20px;margin:0}header span{font-size:13px;opacity:.9}
+nav{display:flex;gap:6px;padding:10px;background:white;border-bottom:1px solid #ddd;position:sticky;top:0;z-index:2}
+nav button,.btn{border:0;border-radius:9px;padding:10px 14px;background:#e9eef5;cursor:pointer;font-weight:600}
+nav button.active{background:#1677ff;color:#fff}
+main{max-width:1200px;margin:18px auto;padding:0 14px}.page{display:none}.page.active{display:block}
+.grid{display:grid;grid-template-columns:1.1fr .9fr;gap:16px}.card{background:#fff;border-radius:14px;padding:16px;box-shadow:0 2px 10px #0000000d;margin-bottom:16px}
+.scan{display:flex;gap:8px}.scan input{flex:1;font-size:22px;padding:13px;border:2px solid #1677ff;border-radius:10px}
+.btn.primary{background:#1677ff;color:#fff}.btn.green{background:#18a558;color:white}.btn.red{background:#e5484d;color:white}
+table{width:100%;border-collapse:collapse}th,td{padding:9px;border-bottom:1px solid #eee;text-align:left}th{background:#f7f8fa}
+.total{font-size:30px;font-weight:800}.muted{color:#68737d;font-size:13px}.danger{color:#d9363e;font-weight:700}.ok{color:#14804a;font-weight:700}
+.cart-row{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #eee;padding:11px 0}
+.qty button{padding:5px 9px;border:1px solid #ddd;background:#fff;border-radius:6px;cursor:pointer}.qty{display:flex;gap:5px;align-items:center}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.metric{background:#fff;border-radius:12px;padding:15px}.metric b{font-size:25px;display:block;margin-top:5px}
+input,select{padding:9px;border:1px solid #ccd3da;border-radius:8px;width:100%}
+.formgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.notice{padding:10px;border-radius:9px;background:#eef6ff;margin-top:10px}.actions{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:800px){.grid{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}.formgrid{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<header><h1>🥕 学校野菜 POSレジ</h1><span>バーコードリーダー対応</span></header>
+<nav>
+<button class="active" data-page="register">レジ</button>
+<button data-page="products">商品管理</button>
+<button data-page="sales">売上・在庫</button>
+<button data-page="settings">設定</button>
+</nav>
+
+<main>
+<section id="register" class="page active">
+<div class="card">
+<h2>商品スキャン</h2>
+<div class="scan">
+<input id="barcode" autofocus placeholder="バーコードをスキャンしてください">
+<button class="btn primary" onclick="scan()">追加</button>
+</div>
+<div class="notice">USBバーコードリーダーを接続すると、多くの機種はキーボード入力として動作します。読み取り後にEnterが入る設定なら自動追加できます。</div>
+</div>
+<div class="grid">
+<div class="card"><h2>現在のカゴ</h2><div id="cart"></div></div>
+<div class="card">
+<h2>会計</h2>
+<div class="muted">合計</div><div class="total" id="cartTotal">¥0</div>
+<div class="actions" style="margin-top:14px">
+<button class="btn green" onclick="checkout()">会計確定</button>
+<button class="btn" onclick="clearCart()">カゴを空にする</button>
+</div>
+<p class="muted">※会計確定時に在庫と売上が更新されます。</p>
+</div>
+</div>
+</section>
+
+<section id="products" class="page">
+<div class="card">
+<h2>商品登録</h2>
+<div class="formgrid">
+<div><label>バーコード</label><input id="pBarcode" placeholder="例: 490000000001"></div>
+<div><label>商品名</label><input id="pName" placeholder="トマト"></div>
+<div><label>価格(円)</label><input id="pPrice" type="number" min="0" placeholder="150"></div>
+<div><label>在庫</label><input id="pStock" type="number" min="0" placeholder="50"></div>
+</div>
+<div class="actions" style="margin-top:12px"><button class="btn primary" onclick="addProduct()">商品を登録</button><button class="btn" onclick="seed()">サンプル商品を入れる</button></div>
+</div>
+<div class="card"><h2>商品一覧</h2><div id="productTable"></div></div>
+</section>
+
+<section id="sales" class="page">
+<div class="cards">
+<div class="metric"><span>本日の売上</span><b id="todaySales">¥0</b></div>
+<div class="metric"><span>本日の販売数</span><b id="todayQty">0</b></div>
+<div class="metric"><span>商品種類</span><b id="productCount">0</b></div>
+<div class="metric"><span>在庫合計</span><b id="stockCount">0</b></div>
+</div>
+<div class="card"><h2>商品別状況</h2><div id="statsTable"></div></div>
+<div class="card"><h2>販売履歴</h2><div id="history"></div></div>
+</section>
+
+<section id="settings" class="page">
+<div class="card">
+<h2>データ</h2>
+<p class="muted">この簡易版はブラウザの端末内にデータを保存します。学校で複数端末から共有する場合は、次の段階でFirebase等のクラウドDBに変更できます。</p>
+<div class="actions">
+<button class="btn" onclick="exportCSV()">売上CSVを書き出す</button>
+<button class="btn red" onclick="resetAll()">全データを初期化</button>
+</div>
+</div>
+</section>
+</main>
+
+<script>
+const KEY="school_pos_v1";
+let db=JSON.parse(localStorage.getItem(KEY)||'{"products":{},"sales":[]}');
+let cart={};
+
+function save(){localStorage.setItem(KEY,JSON.stringify(db));renderAll();}
+function yen(n){return "¥"+Number(n).toLocaleString("ja-JP")}
+function today(){return new Date().toISOString().slice(0,10)}
+
+function scan(){
+ const input=document.getElementById("barcode"), code=input.value.trim();
+ if(!code)return;
+ const p=db.products[code];
+ if(!p){alert("登録されていない商品です: "+code);input.select();return;}
+ const already=cart[code]||0;
+ if(already>=p.stock){alert("在庫がありません。");input.select();return;}
+ cart[code]=already+1; input.value=""; renderCart(); input.focus();
+}
+document.getElementById("barcode").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();scan()}});
+
+function renderCart(){
+ let html="",total=0;
+ for(const [code,q] of Object.entries(cart)){
+   const p=db.products[code]; if(!p)continue;
+   total+=p.price*q;
+   html+=`<div class="cart-row"><div><b>${esc(p.name)}</b><div class="muted">${yen(p.price)} × ${q}</div></div>
+   <div class="qty"><button onclick="changeQty('${escAttr(code)}',-1)">−</button><b>${q}</b><button onclick="changeQty('${escAttr(code)}',1)">＋</button></div></div>`;
+ }
+ document.getElementById("cart").innerHTML=html||'<p class="muted">まだ商品がありません。</p>';
+ document.getElementById("cartTotal").textContent=yen(total);
+}
+function changeQty(code,d){
+ const p=db.products[code]; cart[code]=(cart[code]||0)+d;
+ if(cart[code]<=0)delete cart[code];
+ if(cart[code]>p.stock)cart[code]=p.stock;
+ renderCart();
+}
+function clearCart(){cart={};renderCart()}
+function checkout(){
+ const entries=Object.entries(cart);if(!entries.length){alert("商品がありません。");return}
+ for(const [code,q] of entries){if(q>db.products[code].stock){alert("在庫不足: "+db.products[code].name);return}}
+ let total=0,qty=0;
+ const items=[];
+ for(const [code,q] of entries){const p=db.products[code];p.stock-=q;p.sold=(p.sold||0)+q;total+=p.price*q;qty+=q;items.push({code,name:p.name,qty,price:p.price})}
+ db.sales.push({at:new Date().toISOString(),total,qty,items});
+ cart={};save();alert("会計しました。\\n"+yen(total)+" / "+qty+"個");
+}
+
+function addProduct(){
+ const code=document.getElementById("pBarcode").value.trim(),name=document.getElementById("pName").value.trim();
+ const price=Number(document.getElementById("pPrice").value),stock=Number(document.getElementById("pStock").value);
+ if(!code||!name||price<0||stock<0){alert("入力を確認してください。");return}
+ if(db.products[code] && !confirm("同じバーコードがあります。上書きしますか？"))return;
+ db.products[code]={name,price,stock,sold:db.products[code]?.sold||0};save();
+ ["pBarcode","pName","pPrice","pStock"].forEach(id=>document.getElementById(id).value="");
+}
+function deleteProduct(code){if(confirm("削除しますか？")){delete db.products[code];save()}}
+function renderProducts(){
+ let rows='<table><tr><th>バーコード</th><th>商品</th><th>価格</th><th>在庫</th><th>販売数</th><th></th></tr>';
+ for(const [c,p] of Object.entries(db.products))rows+=`<tr><td>${esc(c)}</td><td>${esc(p.name)}</td><td>${yen(p.price)}</td><td class="${p.stock<=3?'danger':''}">${p.stock}</td><td>${p.sold||0}</td><td><button class="btn red" onclick="deleteProduct('${escAttr(c)}')">削除</button></td></tr>`;
+ document.getElementById("productTable").innerHTML=rows+'</table>';
+}
+function renderStats(){
+ const ts=db.sales.filter(s=>s.at.slice(0,10)===today()),sales=ts.reduce((a,s)=>a+s.total,0),qty=ts.reduce((a,s)=>a+s.qty,0);
+ document.getElementById("todaySales").textContent=yen(sales);document.getElementById("todayQty").textContent=qty;
+ document.getElementById("productCount").textContent=Object.keys(db.products).length;
+ document.getElementById("stockCount").textContent=Object.values(db.products).reduce((a,p)=>a+p.stock,0);
+ let rows='<table><tr><th>商品</th><th>在庫</th><th>累計販売</th><th>累計売上</th></tr>';
+ for(const p of Object.values(db.products))rows+=`<tr><td>${esc(p.name)}</td><td class="${p.stock<=3?'danger':'ok'}">${p.stock}</td><td>${p.sold||0}</td><td>${yen((p.sold||0)*p.price)}</td></tr>`;
+ document.getElementById("statsTable").innerHTML=rows+'</table>';
+ let h='<table><tr><th>日時</th><th>個数</th><th>売上</th><th>内容</th></tr>';
+ for(const s of [...db.sales].reverse().slice(0,100))h+=`<tr><td>${new Date(s.at).toLocaleString("ja-JP")}</td><td>${s.qty}</td><td>${yen(s.total)}</td><td>${s.items.map(i=>esc(i.name)+" × "+i.qty).join(", ")}</td></tr>`;
+ document.getElementById("history").innerHTML=h+'</table>';
+}
+function seed(){
+ const sample=[["490000000001","トマト",150,50],["490000000002","きゅうり",100,40],["490000000003","にんじん",120,30],["490000000004","キャベツ",180,20]];
+ for(const [c,n,p,s] of sample)if(!db.products[c])db.products[c]={name:n,price:p,stock:s,sold:0};save();
+}
+function exportCSV(){
+ const rows=[["日時","売上","個数","商品","数量"]];
+ db.sales.forEach(s=>s.items.forEach(i=>rows.push([new Date(s.at).toLocaleString("ja-JP"),s.total,s.qty,i.name,i.qty])));
+ const csv="\\ufeff"+rows.map(r=>r.map(x=>`"${String(x).replaceAll('"','""')}"`).join(",")).join("\\n");
+ const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="sales.csv";a.click();
+}
+function resetAll(){if(confirm("商品・売上・在庫を全て削除します。本当によいですか？")){localStorage.removeItem(KEY);location.reload()}}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+function escAttr(s){return String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'")}
+
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
+ document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));b.classList.add("active");
+ document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));document.getElementById(b.dataset.page).classList.add("active");
+ renderAll(); if(b.dataset.page==="register")setTimeout(()=>document.getElementById("barcode").focus(),50);
+});
+function renderAll(){renderCart();renderProducts();renderStats()}
+renderAll();
+</script>
+</body>
+</html>
